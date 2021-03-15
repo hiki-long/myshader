@@ -5,6 +5,9 @@
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <cmath>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void processInput(GLFWwindow *window);
@@ -23,7 +26,7 @@ unsigned int indices[] = {
     0, 1, 3, // first triangle
     1, 2, 3  // second triangle
 };
-
+float mixvalue = 0.5f;
 int main()
 {
     glfwInit();
@@ -78,6 +81,7 @@ int main()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    stbi_set_flip_vertically_on_load(true);
     unsigned char *data = stbi_load("container.jpg", &width, &height, &nrChannels, 0);
     if(data)
     {
@@ -107,8 +111,13 @@ int main()
     }
     stbi_image_free(data);
     ourShader.use();
-    glUniform1i(glGetUniformLocation(ourShader.ID, "texture1"),0);
-    ourShader.setInt("texture2",1);
+    ourShader.setInt("texture1", 0);
+    ourShader.setInt("texture2", 1);
+
+    glm::mat4 trans = glm::mat4(1.0f);
+    trans = glm::rotate(trans, glm::radians(90.0f), glm::vec3(0.0, 0.0, 1.0));
+    trans = glm::scale(trans, glm::vec3(0.5, 0.5, 0.5));
+
     while (!glfwWindowShouldClose(window))
     {
         processInput(window);
@@ -122,7 +131,23 @@ int main()
         glBindTexture(GL_TEXTURE_2D, texture1);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, texture2);
-        ourShader.use();
+        glm::mat4 trans = glm::mat4(1.0f);
+        //先旋转后位移和先位移后旋转的差别很大,
+        //先旋转后位移会造成图片看起来绕着一个点在圆弧上旋转，
+        //先位移后旋转则是在位移后的点自旋
+        
+        // trans = glm::rotate(trans, (float)glfwGetTime(), glm::vec3(0.0f, 0.0f, 1.0f));
+        // trans = glm::translate(trans, glm::vec3(0.5f, -0.5f, 0.0f));
+        // unsigned int transformLoc = glGetUniformLocation(ourShader.ID, "transform");
+        // glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(trans));
+        
+        trans = glm::translate(trans, glm::vec3(0.5f, -0.5f, 0.0f));
+        float scaleAmount = sin(glfwGetTime());
+        trans = glm::scale(trans, glm::vec3(scaleAmount, scaleAmount, scaleAmount));
+        unsigned int transformLoc = glGetUniformLocation(ourShader.ID, "transform");
+        glUniformMatrix4fv(transformLoc, 1, GL_FALSE, &trans[0][0]);
+        
+        ourShader.setFloat("mixvalue",mixvalue);
         glBindVertexArray(VAO);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
