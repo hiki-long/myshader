@@ -266,6 +266,7 @@ public:
 
 };
 
+//超前引用,Matrix_t之前没有Vector_t,的定义,因此要在Vector_t定义完成之后才完善该函数
 inline void Matrix_t::Rotate(float x, float y, float z, float theta)
 {//旋转矩阵，网上搜公式
     //x,y,z是围绕旋转的向量
@@ -291,17 +292,7 @@ inline void Matrix_t::Rotate(float x, float y, float z, float theta)
     this->matrix_t[3][3] = 1.0f;
 }
 
-//r,g,b色彩管理
-typedef struct {float x,y,z,w;} point_t;
-typedef struct { float r, g, b; } color_t;
-//u,v纹理管理
-typedef struct { float u, v; } texcoord_t;
-//
-typedef struct { point_t pos; texcoord_t tc; color_t color; float ratio; } vertex_t;
 
-typedef struct { vertex_t v, v1, v2; } edge_t;
-typedef struct { float top, bottom; edge_t left, right; } trapezoid_t;
-typedef struct { vertex_t v, step; int x, y, w; } scanline_t;
 class Vertex_t{
     //顶点类
 public:
@@ -328,12 +319,208 @@ public:
         this->b *= rhw;
     }
 
-    Vertex_t VInterpolate(const Vertex_t & v1, const Vertex_t & v2, float t)
+    
+
+    
+
+    Vertex_t operator+(const Vertex_t & v) const
     {
         Vertex_t res;
-        res.x = Interpolate(v1.x, v2.x, t);
-        res.y = Interpolate(v1.y, v2.y, t);
-        res.z = Interpolate(v1.z, v2.z, t);
-        res.w = 1.0f;
+        res.x = this->x + v.x;
+        res.y = this->y + v.y;
+        res.z = this->z + v.z;
+        res.w = this->w + v.w;
+        res.rhw = this->rhw + v.rhw;
+        res.u = this->u + v.u;
+        res.v = this->v + v.v;
+        res.r = this->r + v.r;
+        res.g = this->g + v.g;
+        res.b = this->b + v.b;
+        return res;
     }
+
+    Vertex_t operator=(const Vertex_t & v)
+    {
+        Vertex_t res;
+        res.x = v.x;
+        res.y = v.y;
+        res.z = v.z;
+        res.w = v.w;
+        res.r = v.r;
+        res.g = v.g;
+        res.b = v.b;
+        res.u = v.u;
+        res.v = v.v;
+        res.rhw = v.rhw;
+        return res;
+    }
+};
+
+//进行顶点相减
+Vertex_t CountStep(Vertex_t &begin, Vertex_t &end, float width)
+{
+    Vertex_t res;
+    float inv = 1.0f / width;
+    res.x = (end.x - begin.x) * inv;
+    res.y = (end.y - begin.y) * inv;
+    res.z = (end.z - begin.z) * inv;
+    res.w = (end.w - begin.w) * inv;
+    res.u = (end.u - begin.u) * inv;
+    res.v = (end.v - begin.v) * inv;
+    res.r = (end.r - begin.r) * inv;
+    res.g = (end.g - begin.g) * inv;
+    res.b = (end.b - begin.b) * inv;
+    res.rhw = (end.rhw - begin.rhw) * inv;
 }
+
+class Edge_t{
+public:
+    //v1,v2是边的端点,v是边上一点
+    Vertex_t v, v1, v2;
+    Edge_t() = default;
+};
+
+class Scanline_t{
+public:
+    //v是扫描线的起点,step是步长(x移动一个单位),x,y是扫描的点的坐标
+    Vertex_t v, step; int x, y, width;
+    Scanline_t() = default;
+};
+
+//顶点交换
+void Swap(Vertex_t & p1, Vertex_t & p2)
+{
+    Vertex_t p = p1;
+    p1 = p2;
+    p2 = p;
+}
+
+//顶点插值
+Vertex_t VInterpolate(const Vertex_t & v1, const Vertex_t & v2, float t)
+{
+    Vertex_t res;
+    res.x = Interpolate(v1.x, v2.x, t);
+    res.y = Interpolate(v1.y, v2.y, t);
+    res.z = Interpolate(v1.z, v2.z, t);
+    res.w = 1.0f;
+    res.r = Interpolate(v1.r, v2.r, t);
+    res.g = Interpolate(v1.g, v2.g, t);
+    res.b = Interpolate(v1.b, v2.b, t);
+    res.rhw = Interpolate(v1.rhw, v2.rhw, t);
+}
+
+
+class Trapezoid_t{
+public:
+    //所在范围的左右两边
+    Edge_t left;
+    Edge_t right;
+    //扫描的y轴大小
+    float top;
+    float bottom;
+    Trapezoid_t() = default;
+    int CountTriangle(Trapezoid_t *trap, const Vertex_t & p1, const Vertex_t & p2, const Vertex_t & p3)
+    {
+        //计算按y轴扫描可能碰到的三角形数量,范围在[0-2]
+        Vertex_t v1,v2,v3;
+        v1 = p1, v2 = p2, v3 = p3;
+        float k,x;
+        if(v1.y > v2.y)
+            Swap(v1,v2);
+        if(v1.y > v3.y)
+            Swap(v1,v3);
+        if(v2.y > v3.y)
+            Swap(v2,v3);
+        //下面处理在同一条线上的情况
+        if(v1.y == v2.y && v2.y == v3.y)
+            return 0;
+        if(v1.x == v2.x && v2.x == v3.x)
+            return 0;
+        //v1应该是最左边最上一点
+        if(v1.y == v2.y)
+        {
+            //三角形朝下
+            if(v1.x > v2.x)
+                Swap(v1, v2);
+            trap[0].top = v1.y;
+            trap[0].bottom = v3.y;
+            trap[0].left.v1 = v1;
+            trap[0].left.v2 = v3;
+            trap[0].right.v1 = v2;
+            trap[0].right.v2 = v3;
+            return trap[0].top < trap[0].bottom ? 1 : 0;
+        }
+        if(v2.y == v3.y)
+        {
+            //三角形朝上
+            if(v2.x > v3.x)
+                Swap(v2,v3);
+            trap[0].top = v1.y;
+            trap[0].bottom = v3.y;
+            trap[0].left.v1 = v1;
+            trap[0].left.v2 = v2;
+            trap[0].right.v1 = v1;
+            trap[0].right.v2 = v3;
+            return trap[0].top < trap[0].bottom ? 1 : 0;
+        }
+
+        //v1,v2形成的边
+        trap[0].top = v1.y;
+        trap[0].bottom = v2.y;
+        //v2,v3形成的边
+        trap[1].top = v2.y;
+        trap[1].bottom = v3.y;
+        
+        k = (v3.y - v1.y) / (v2.y - v1.y);
+        x = v1.x + (v2.x - v1.x) * k;
+
+        if( x <= v3.x)
+        {
+            trap[0].left.v1 = v1;
+            trap[0].left.v2 = v2;
+            trap[0].right.v1 = v1;
+            trap[0].right.v2 = v3;
+            trap[1].left.v1 = v2;
+            trap[1].left.v2 = v3;
+            trap[1].right.v1 = v1;
+            trap[1].right.v2 = v2;
+        }
+        else
+        {
+            trap[0].left.v1 = v1;
+            trap[0].left.v2 = v3;
+            trap[0].right.v1 = v1;
+            trap[0].right.v2 = v2;
+            trap[1].left.v1 = v1;
+            trap[1].left.v2 = v3;
+            trap[1].right.v1 = v2;
+            trap[1].right.v2 = v3;
+        }
+
+        return 2;      
+    }
+
+    void YinEdge(float y)
+    {
+        //计算在左右两侧的边上高度为y的两个点,通过插值计算可以得出来
+        float s1 = this->left.v2.y - this->left.v1.y;
+        float s2 = this->right.v2.y - this->right.v1.y;
+        float t1 = (y - this->left.v1.y) / s1;
+        float t2 = (y - this->right.v1.y) / s2;
+        this->left.v = VInterpolate(this->left.v1, this->left.v2, t1);
+        this->right.v = VInterpolate(this->right.v2, this->right.v2, t2);
+    }
+
+    void InitScanLine(Scanline_t & scan, int y)
+    {
+        float width = this->right.v.x - this->left.v.x;
+        scan.x = (int)(this->left.v.x + 0.5f);
+        scan.width = (int)(this->right.v.x + 0.5f) - scan.x;
+        scan.y = y;
+        scan.v = this->left.v;
+        //不可以出现左边超过右边范围的情况
+        if(this->left.v.x >= this->right.v.x) scan.width = 0;
+        scan.step = CountStep(this->left.v, this->right.v, width);
+    }
+
+};

@@ -5,9 +5,14 @@
 #include<windows.h>
 #include<assert.h>
 #include"myshader.h"
+
 #define PI 3.1415926f
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
+
+#define RENDER_MODE_WIREFRAME 1
+#define RENDER_MODE_TEXTURE 2
+#define RENDER+MODE_COLOR 4
 
 
 int InArea(int num, int min, int max)
@@ -118,6 +123,72 @@ Vector_t ToScreen(const Transform_t& ts, const Vector_t& v)
     res.w = 1.0f;
     return res;
 }
+
+class Device_t{
+    Transform_t transform; //坐标变换器
+    int wwidth; //窗口高度
+    int wheight; //窗口宽度
+    unsigned int **framebuffer; //像素缓存
+    float **zbuffer; //深度缓存
+    unsigned int **texture; //纹理缓存
+    int tex_width;//纹理宽度
+    int tex_height; //纹理高度
+    float max_u; //纹理最大宽度
+    float max_v; //纹理最大高度
+    int render_status; //当前渲染模式
+    int background; //背景色
+    int foreground; //前景色
+    Device_t() = default;
+
+    Device_t(int width, int height, void* fb)
+    {
+        //fb是外部帧缓存,非NULL可以使用
+        int need = sizeof(void*) * (height * 2 + 1024) * width * height * 8;
+        char *ptr = new char[need + 64];
+        // char *ptr = (char*)malloc(need + 64);
+        char *framebuf, *zbuf;
+        int j;
+        assert(ptr);
+        this->framebuffer = (unsigned int**)ptr;
+        this->zbuffer = (float**)(ptr + sizeof(void*) * height);
+        ptr += sizeof(void*) * height * 2;
+        this->texture = (unsigned int **)ptr;
+        ptr += sizeof(void*) * 1024;
+        framebuf = (char*)ptr;
+        zbuf = (char*)ptr + width * height * 4;
+        ptr += width * height * 8;
+        if(fb != NULL) framebuf = (char*)fb;
+        for(j = 0; j < height; j++)
+        {
+            this->framebuffer[j] = (unsigned int*)(framebuf + width * 4 * j);
+            this->zbuffer[j] = (float*)(zbuf + width * 4 * j);
+        }
+        this->texture[0] = (unsigned int*)ptr;
+        this->texture[1] = (unsigned int*)(ptr + 16);
+        memset(this->texture[0], 0, 64);
+        this->tex_width = 2;
+        this->tex_height = 2;
+        this->max_u = 1.0f;
+        this->max_v = 1.0f;
+        this->wwidth = width;
+        this->wheight = height;
+        this->background = 0x0c0c0;
+        this->foreground = 0;
+        MVPInit(this->transform, this->wwidth, this->wheight);
+        this->render_status = RENDER_MODE_WIREFRAME;
+    }
+
+    ~Device_t()
+    {
+        if(this->framebuffer)
+            delete [] this->framebuffer;
+        this->framebuffer = NULL;
+        this->zbuffer = NULL;
+        this->texture = NULL;
+    }
+
+    
+};
 
 
 int main(void)
