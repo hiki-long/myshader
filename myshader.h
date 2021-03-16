@@ -3,6 +3,7 @@ float Interpolate(float x1, float x2, int t)
 {//进行0~1范围线性插值的计算
     return x1 + (x2 - x1) * t;
 }
+class Vector_t;
 class Matrix_t{
 public:
     float matrix_t[4][4];
@@ -142,6 +143,8 @@ public:
         this->matrix_t[2][2] *= z;
     }
 
+    Vector_t VectorMuti(Vector_t & v);
+
     void Rotate(float x, float y, float z, float theta);
 
 };
@@ -264,6 +267,7 @@ public:
     }
 
 
+
 };
 
 //超前引用,Matrix_t之前没有Vector_t,的定义,因此要在Vector_t定义完成之后才完善该函数
@@ -292,6 +296,12 @@ inline void Matrix_t::Rotate(float x, float y, float z, float theta)
     this->matrix_t[3][3] = 1.0f;
 }
 
+inline Vector_t Matrix_t::VectorMuti(Vector_t & v)
+{//矩阵与向量相乘
+    Vector_t res;
+    res = v.MatrixMuti(*this);
+    return res;
+}
 
 class Vertex_t{
     //顶点类
@@ -318,10 +328,6 @@ public:
         this->g *= rhw;
         this->b *= rhw;
     }
-
-    
-
-    
 
     Vertex_t operator+(const Vertex_t & v) const
     {
@@ -371,6 +377,7 @@ Vertex_t CountStep(Vertex_t &begin, Vertex_t &end, float width)
     res.g = (end.g - begin.g) * inv;
     res.b = (end.b - begin.b) * inv;
     res.rhw = (end.rhw - begin.rhw) * inv;
+    return res;
 }
 
 class Edge_t{
@@ -407,7 +414,10 @@ Vertex_t VInterpolate(const Vertex_t & v1, const Vertex_t & v2, float t)
     res.g = Interpolate(v1.g, v2.g, t);
     res.b = Interpolate(v1.b, v2.b, t);
     res.rhw = Interpolate(v1.rhw, v2.rhw, t);
+    return res;
 }
+
+
 
 
 class Trapezoid_t{
@@ -419,86 +429,7 @@ public:
     float top;
     float bottom;
     Trapezoid_t() = default;
-    int CountTriangle(Trapezoid_t *trap, const Vertex_t & p1, const Vertex_t & p2, const Vertex_t & p3)
-    {
-        //计算按y轴扫描可能碰到的三角形数量,范围在[0-2]
-        Vertex_t v1,v2,v3;
-        v1 = p1, v2 = p2, v3 = p3;
-        float k,x;
-        if(v1.y > v2.y)
-            Swap(v1,v2);
-        if(v1.y > v3.y)
-            Swap(v1,v3);
-        if(v2.y > v3.y)
-            Swap(v2,v3);
-        //下面处理在同一条线上的情况
-        if(v1.y == v2.y && v2.y == v3.y)
-            return 0;
-        if(v1.x == v2.x && v2.x == v3.x)
-            return 0;
-        //v1应该是最左边最上一点
-        if(v1.y == v2.y)
-        {
-            //三角形朝下
-            if(v1.x > v2.x)
-                Swap(v1, v2);
-            trap[0].top = v1.y;
-            trap[0].bottom = v3.y;
-            trap[0].left.v1 = v1;
-            trap[0].left.v2 = v3;
-            trap[0].right.v1 = v2;
-            trap[0].right.v2 = v3;
-            return trap[0].top < trap[0].bottom ? 1 : 0;
-        }
-        if(v2.y == v3.y)
-        {
-            //三角形朝上
-            if(v2.x > v3.x)
-                Swap(v2,v3);
-            trap[0].top = v1.y;
-            trap[0].bottom = v3.y;
-            trap[0].left.v1 = v1;
-            trap[0].left.v2 = v2;
-            trap[0].right.v1 = v1;
-            trap[0].right.v2 = v3;
-            return trap[0].top < trap[0].bottom ? 1 : 0;
-        }
-
-        //v1,v2形成的边
-        trap[0].top = v1.y;
-        trap[0].bottom = v2.y;
-        //v2,v3形成的边
-        trap[1].top = v2.y;
-        trap[1].bottom = v3.y;
-        
-        k = (v3.y - v1.y) / (v2.y - v1.y);
-        x = v1.x + (v2.x - v1.x) * k;
-
-        if( x <= v3.x)
-        {
-            trap[0].left.v1 = v1;
-            trap[0].left.v2 = v2;
-            trap[0].right.v1 = v1;
-            trap[0].right.v2 = v3;
-            trap[1].left.v1 = v2;
-            trap[1].left.v2 = v3;
-            trap[1].right.v1 = v1;
-            trap[1].right.v2 = v2;
-        }
-        else
-        {
-            trap[0].left.v1 = v1;
-            trap[0].left.v2 = v3;
-            trap[0].right.v1 = v1;
-            trap[0].right.v2 = v2;
-            trap[1].left.v1 = v1;
-            trap[1].left.v2 = v3;
-            trap[1].right.v1 = v2;
-            trap[1].right.v2 = v3;
-        }
-
-        return 2;      
-    }
+    
 
     void YinEdge(float y)
     {
@@ -522,5 +453,84 @@ public:
         if(this->left.v.x >= this->right.v.x) scan.width = 0;
         scan.step = CountStep(this->left.v, this->right.v, width);
     }
-
 };
+
+int CountTriangle(Trapezoid_t *trap, const Vertex_t & p1, const Vertex_t & p2, const Vertex_t & p3)
+{
+    //计算按y轴扫描可能碰到的三角形数量,范围在[0-2]
+    Vertex_t v1,v2,v3;
+    v1 = p1, v2 = p2, v3 = p3;
+    float k,x;
+    if(v1.y > v2.y)
+        Swap(v1,v2);
+    if(v1.y > v3.y)
+        Swap(v1,v3);
+    if(v2.y > v3.y)
+        Swap(v2,v3);
+    //下面处理在同一条线上的情况
+    if(v1.y == v2.y && v2.y == v3.y)
+        return 0;
+    if(v1.x == v2.x && v2.x == v3.x)
+        return 0;
+    //v1应该是最左边最上一点
+    if(v1.y == v2.y)
+    {
+        //三角形朝下
+        if(v1.x > v2.x)
+            Swap(v1, v2);
+        trap[0].top = v1.y;
+        trap[0].bottom = v3.y;
+        trap[0].left.v1 = v1;
+        trap[0].left.v2 = v3;
+        trap[0].right.v1 = v2;
+        trap[0].right.v2 = v3;
+        return trap[0].top < trap[0].bottom ? 1 : 0;
+    }
+    if(v2.y == v3.y)
+    {
+        //三角形朝上
+        if(v2.x > v3.x)
+            Swap(v2,v3);
+        trap[0].top = v1.y;
+        trap[0].bottom = v3.y;
+        trap[0].left.v1 = v1;
+        trap[0].left.v2 = v2;
+        trap[0].right.v1 = v1;
+        trap[0].right.v2 = v3;
+        return trap[0].top < trap[0].bottom ? 1 : 0;
+    }
+
+    //v1,v2形成的边
+    trap[0].top = v1.y;
+    trap[0].bottom = v2.y;
+    //v2,v3形成的边
+    trap[1].top = v2.y;
+    trap[1].bottom = v3.y;
+    
+    k = (v3.y - v1.y) / (v2.y - v1.y);
+    x = v1.x + (v2.x - v1.x) * k;
+
+    if( x <= v3.x)
+    {
+        trap[0].left.v1 = v1;
+        trap[0].left.v2 = v2;
+        trap[0].right.v1 = v1;
+        trap[0].right.v2 = v3;
+        trap[1].left.v1 = v2;
+        trap[1].left.v2 = v3;
+        trap[1].right.v1 = v1;
+        trap[1].right.v2 = v2;
+    }
+    else
+    {
+        trap[0].left.v1 = v1;
+        trap[0].left.v2 = v3;
+        trap[0].right.v1 = v1;
+        trap[0].right.v2 = v2;
+        trap[1].left.v1 = v1;
+        trap[1].left.v2 = v3;
+        trap[1].right.v1 = v2;
+        trap[1].right.v2 = v3;
+    }
+    return 2;      
+}
