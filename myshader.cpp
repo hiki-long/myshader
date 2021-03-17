@@ -5,6 +5,7 @@
 #include<windows.h>
 #include<assert.h>
 #include"myshader.h"
+#include<vector>
 
 #define PI 3.1415926f
 const unsigned int SCR_WIDTH = 800;
@@ -478,7 +479,7 @@ public:
         for (j = 0; j < 256; j++) {
             for (i = 0; i < 256; i++) {
                 int x = i / 32, y = j / 32;
-                texture[j][i] = ((x + y) & 1)? 0xffffff : 0x3fbcef;
+                texture[j][i] = ((x + y) & 1)? 0xffffff : 0xdc143c;
             }
         }
         SetTexture(texture, 256 * 4, 256, 256);
@@ -577,6 +578,80 @@ int ScreenInit(int w, int h, const TCHAR *title)
     return 0;
 }
 
+class Light
+{//光源
+public:
+    Vector_t position;
+    float intensity;
+    Light() = default;
+    Light(Vector_t p, float intense)
+    {
+        this->position = p;
+        this->intensity = intense;
+    }
+};
+
+class Color
+{
+    float r;
+    float g;
+    float b;
+    
+    Color(){this->r = 0.0f, this->g = 0.0f, this->b = 0.0f;}
+    Color(float x, float y, float z)
+    {
+        this->r = x;
+        this->g = y;
+        this->b = z;
+    }
+};
+
+Vector_t phong_fragment_shader(Vector_t point, Vector_t color, Vector_t normal)
+{//由于设计之处忘记处理平面垂直的向量的值,现在很难把光照加入,暂定不修改
+    //ambient 环境光
+    float ka = 0.005;
+    //diffuse 漫反射
+    Vector_t kd = color;
+    //Specular 高光
+    float ks = 0.7937;
+    float intense = 500;
+    Vector_t p1(20,20,20);
+    Vector_t p2(-20,20,0);
+    auto l1 = Light(p1,intense);
+    auto l2 = Light(p2,intense);
+    //光源位置和强度
+    std::vector<Light> lights = {l1, l2};
+    //环境光强度
+    float amb_light_intensity = 10;
+    //视觉角度
+    Vector_t eye_pos(0, 0, 10);
+
+    //高光的幂指数
+    float p = 150;
+
+    Vector_t result_color(0, 0, 0);
+    for (auto& light : lights)
+    {
+        // 光的强度为 I/r² 跟距离有关
+        float ambient = ka*amb_light_intensity;
+        Vector_t res1;
+        res1.x = res1.y = res1.z = ambient;
+        Vector_t r = light.position - point;
+        Vector_t temp = r;
+        temp.NormalizeSelf();
+        Vector_t res2 = kd;
+        res2.Scale((light.intensity/(r.Product(r))) * std::max(0.0f, temp.Product(normal)));
+        Vector_t v = eye_pos - point;
+        Vector_t temp2 = r + v;
+        temp2.NormalizeSelf();
+        float sepcular = ks*(light.intensity/(r.Product(r))) * pow(std::max(0.0f, temp2.Product(normal)),p);
+        Vector_t res3;
+        res3.x = res3.y = res3.z = sepcular;
+        result_color = result_color + res1 + res2 + res3;
+    }
+    //0~1范围区间的颜色
+    return result_color;
+}
 
 int main(void)
 {

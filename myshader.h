@@ -164,6 +164,13 @@ public:
         this->w = 1.0f;
     }
 
+    Vector_t(float x, float y, float z)
+    {
+        this->x = x;
+        this->y = y;
+        this->z = z;
+    }
+
     Vector_t(float x, float y, float z, float w)
     {
         this->x = x;
@@ -217,6 +224,23 @@ public:
         res.y = this->y * v.y;
         res.z = this->z * v.z;
         return res.x + res.y + res.z;
+    }
+
+    Vector_t Divide(const Vector_t &v)
+    {
+        Vector_t res;
+        res.x = this->x / v.x;
+        res.y = this->y / v.y;
+        res.z = this->z / v.z;
+        res.w = 0.0f;
+        return res;
+    }
+
+    void Scale(float f)
+    {
+        this->x = this->x / f;
+        this->y = this->y / f;
+        this->z = this->z / f;
     }
 
     Vector_t normalized() const
