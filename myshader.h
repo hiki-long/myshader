@@ -335,7 +335,8 @@ public:
 
     void Init()
     {//初始化w,进行透视矫正，x和y与u/z,v/z呈线性相关,而变换后坐标的vertex的w正是原来坐标的z的值
-        this->rhw = 1 / this->w;
+        float rhw = 1 / this->w;
+        this->rhw = rhw;
         this->u *= rhw;
         this->v *= rhw;
         this->r *= rhw;
@@ -466,6 +467,8 @@ public:
         //不可以出现左边超过右边范围的情况
         if(this->left.v.x >= this->right.v.x) scan.width = 0;
         scan.step = CountStep(this->left.v, this->right.v, width);
+        // std::cout << scan.step.x << " " << scan.step.y << " " << scan.step.z << std::endl;
+
     }
 };
 
@@ -482,9 +485,9 @@ int CountTriangle(Trapezoid_t *trap, const Vertex_t & p1, const Vertex_t & p2, c
     if(v2.y > v3.y)
         Swap(v2,v3);
     //下面处理在同一条线上的情况
-    if(v1.y == v2.y && v2.y == v3.y)
+    if(v1.y == v2.y && v1.y == v3.y)
         return 0;
-    if(v1.x == v2.x && v2.x == v3.x)
+    if(v1.x == v2.x && v1.x == v3.x)
         return 0;
     //v1应该是最左边最上一点
     if(v1.y == v2.y)
@@ -533,7 +536,7 @@ int CountTriangle(Trapezoid_t *trap, const Vertex_t & p1, const Vertex_t & p2, c
         trap[1].left.v1 = v2;
         trap[1].left.v2 = v3;
         trap[1].right.v1 = v1;
-        trap[1].right.v2 = v2;
+        trap[1].right.v2 = v3;
     }
     else
     {

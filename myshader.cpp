@@ -416,7 +416,6 @@ public:
         p1 = ToScreen(this->transform, c1);
         p2 = ToScreen(this->transform, c2);
         p3 = ToScreen(this->transform, c3);
-
         //绘制色彩或纹理
         if(render_state & (RENDER_MODE_COLOR | RENDER_MODE_TEXTURE))
         {
@@ -426,6 +425,7 @@ public:
             t1.x = p1.x; t1.y = p1.y; t1.z = p1.z; t1.w = c1.w;
             t2.x = p2.x; t2.y = p2.y; t2.z = p2.z; t2.w = c2.w;
             t3.x = p3.x; t3.y = p3.y; t3.z = p3.z; t3.w = c3.w;
+            // std::cout << t1.x << " " << t1.y << " " << t1.z << " " << t1.w <<std::endl;
             //初始化顶点
             t1.Init();
             t2.Init();
