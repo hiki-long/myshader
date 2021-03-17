@@ -31,3 +31,7 @@ myshader.h主要实现Vector_t(向量类),Matrix_t(矩阵类),Vertex_t(顶点类
 图形化界面采用directx图形api,因此坐标系是左手坐标系,需注意实现MVP变换时候的z的方向。
 
 由于实现光线追踪、光照渲染等功能用原生C++写感觉工作量过大，之后可以考虑转用opengl来实现以上效果。
+
+### 效果展示
+
+![效果展示](https://github.com/hiki-long/myshader/raw/master/img/effect.png)
