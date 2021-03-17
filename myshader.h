@@ -1,5 +1,5 @@
 // typedef Vector_t Point_t;
-float Interpolate(float x1, float x2, int t)
+float Interpolate(float x1, float x2, float t)
 {//进行0~1范围线性插值的计算
     return x1 + (x2 - x1) * t;
 }
@@ -164,7 +164,7 @@ public:
         this->w = 1.0f;
     }
 
-    Vector_t(int x, int y, int z, int w)
+    Vector_t(float x, float y, float z, float w)
     {
         this->x = x;
         this->y = y;
@@ -319,6 +319,20 @@ public:
         rhw = 1.0;
     }
 
+    Vertex_t(int x, int y, int z , int w, int u, int v, float r, float g, float b, float rhw)
+    {
+        this->x = x;
+        this->y = y;
+        this->z = z;
+        this->w = w;
+        this->u = u;
+        this->v = v;
+        this->r = r;
+        this->g = g;
+        this->b = b;
+        this->rhw = rhw;
+    }
+
     void Init()
     {//初始化w,进行透视矫正，x和y与u/z,v/z呈线性相关,而变换后坐标的vertex的w正是原来坐标的z的值
         this->rhw = 1 / this->w;
@@ -345,20 +359,18 @@ public:
         return res;
     }
 
-    Vertex_t operator=(const Vertex_t & v)
+    void operator=(const Vertex_t & v)
     {
-        Vertex_t res;
-        res.x = v.x;
-        res.y = v.y;
-        res.z = v.z;
-        res.w = v.w;
-        res.r = v.r;
-        res.g = v.g;
-        res.b = v.b;
-        res.u = v.u;
-        res.v = v.v;
-        res.rhw = v.rhw;
-        return res;
+        this->x = v.x;
+        this->y = v.y;
+        this->z = v.z;
+        this->w = v.w;
+        this->r = v.r;
+        this->g = v.g;
+        this->b = v.b;
+        this->u = v.u;
+        this->v = v.v;
+        this->rhw = v.rhw;
     }
 };
 
@@ -413,6 +425,8 @@ Vertex_t VInterpolate(const Vertex_t & v1, const Vertex_t & v2, float t)
     res.r = Interpolate(v1.r, v2.r, t);
     res.g = Interpolate(v1.g, v2.g, t);
     res.b = Interpolate(v1.b, v2.b, t);
+    res.u = Interpolate(v1.u, v2.u, t);
+    res.v = Interpolate(v1.v, v2.v, t);
     res.rhw = Interpolate(v1.rhw, v2.rhw, t);
     return res;
 }
@@ -439,7 +453,7 @@ public:
         float t1 = (y - this->left.v1.y) / s1;
         float t2 = (y - this->right.v1.y) / s2;
         this->left.v = VInterpolate(this->left.v1, this->left.v2, t1);
-        this->right.v = VInterpolate(this->right.v2, this->right.v2, t2);
+        this->right.v = VInterpolate(this->right.v1, this->right.v2, t2);
     }
 
     void InitScanLine(Scanline_t & scan, int y)

@@ -14,6 +14,37 @@ const unsigned int SCR_HEIGHT = 600;
 #define RENDER_MODE_TEXTURE 2
 #define RENDER_MODE_COLOR 4
 
+int screen_w, screen_h, screen_exit = 0;
+int screen_mx = 0, screen_my = 0, screen_mb = 0;
+int screen_keys[512];	// 当前键盘按下状态
+static HWND screen_handle = NULL;		// 主窗口 HWND
+static HDC screen_dc = NULL;			// 配套的 HDC
+static HBITMAP screen_hb = NULL;		// DIB
+static HBITMAP screen_ob = NULL;		// 老的 BITMAP
+unsigned char *screen_fb = NULL;		// frame buffer
+long screen_pitch = 0; //screen间距
+
+static LRESULT ScreenEvents(HWND hWnd, UINT msg,WPARAM wParam, LPARAM lParam)
+{
+    switch(msg)
+    {
+        case WM_CLOSE: screen_exit = 1; break;
+        case WM_KEYDOWN: screen_keys[wParam & 511] = 1; break;
+        case WM_KEYUP: screen_keys[wParam & 511] = 0; break;
+        default: return DefWindowProc(hWnd, msg, wParam, lParam);
+    }
+    return 0;
+}
+Vertex_t mesh[8] = {
+	{  -1, -1,  1, 1 ,  0, 0 ,  1.0f, 0.2f, 0.2f , 1 },
+	{   1, -1,  1, 1 ,  0, 1 ,  0.2f, 1.0f, 0.2f , 1 },
+	{   1,  1,  1, 1 ,  1, 1 ,  0.2f, 0.2f, 1.0f , 1 },
+	{  -1,  1,  1, 1 ,  1, 0 ,  1.0f, 0.2f, 1.0f , 1 },
+	{  -1, -1, -1, 1 ,  0, 0 ,  1.0f, 1.0f, 0.2f , 1 },
+	{   1, -1, -1, 1 ,  0, 1 ,  0.2f, 1.0f, 1.0f , 1 },
+	{   1,  1, -1, 1 ,  1, 1 ,  1.0f, 0.3f, 0.3f , 1 },
+	{  -1,  1, -1, 1 ,  1, 0 ,  0.2f, 1.0f, 0.3f , 1 },
+};
 
 int InArea(int num, int min, int max)
 {//处理颜色范围0~255区间
@@ -26,6 +57,7 @@ Matrix_t SetView(const Vector_t& eye, const Vector_t& at, const Vector_t& up)
     zaxis = at - eye;
     zaxis.NormalizeSelf();
     xaxis = up.Cross(zaxis);
+    xaxis.NormalizeSelf();
     yaxis = zaxis.Cross(xaxis);
     Matrix_t temp;
     temp.matrix_t[0][0] = xaxis.x;
@@ -35,7 +67,7 @@ Matrix_t SetView(const Vector_t& eye, const Vector_t& at, const Vector_t& up)
 
     temp.matrix_t[0][1] = yaxis.x;
     temp.matrix_t[1][1] = yaxis.y;
-    temp.matrix_t[2][1] = zaxis.z;
+    temp.matrix_t[2][1] = yaxis.z;
     temp.matrix_t[3][1] = -yaxis.Product(eye);
 
     temp.matrix_t[0][2] = zaxis.x;
@@ -59,8 +91,8 @@ Matrix_t SetPerspective(float fovy, float aspect, float zn, float zf)
     res.matrix_t[0][0] = fax/aspect;
     res.matrix_t[1][1] = fax;
     res.matrix_t[2][2] = zf/(zf-zn);
-    res.matrix_t[2][3] = - zn*zf /(zf-zn);
     res.matrix_t[2][3] = 1.0f;
+    res.matrix_t[3][2] = - zn*zf /(zf-zn);
     return res;
 }
 
@@ -86,10 +118,11 @@ void MVPTrans(Transform_t &trans)
 void MVPInit(Transform_t &trans, int width, int height)
 {
     //初始化MVP变换需要用到的矩阵
-    float aspect = width / height;
+    float aspect = (float)width / (float)height;
     trans.world.SetIndentity();
     trans.view.SetIndentity();
-    trans.projection = SetPerspective(2*PI * 0.5f, (float)width/(float)height, 1.0f, 500.0f);
+    //Π = 180°角 , 设置相机的视角为90°
+    trans.projection = SetPerspective(PI * 0.5f, aspect, 1.0f, 500.0f);
     trans.width = width;
     trans.height = height;
     MVPTrans(trans);
@@ -106,8 +139,8 @@ bool CheckCVV(const Vector_t& v)
     //最后要除以w,范围要落在[-1,1],因此绝对值比w大的要进行空间上的裁剪,不给予显示
     float w = v.w;
     if(v.z < 0.0f || v.z > w || v.x < -w || v.x > w || v.y < -w || v.y > w)
-        return false;
-    return true;
+        return true;
+    return false;
 }
 
 Vector_t ToScreen(const Transform_t& ts, const Vector_t& v)
@@ -125,6 +158,7 @@ Vector_t ToScreen(const Transform_t& ts, const Vector_t& v)
 }
 
 class Device_t{
+public:
     Transform_t transform; //坐标变换器
     int wwidth; //窗口高度
     int wheight; //窗口宽度
@@ -138,14 +172,16 @@ class Device_t{
     int render_status; //当前渲染模式
     int background; //背景色
     int foreground; //前景色
+
+    
+
     Device_t() = default;
 
     Device_t(int width, int height, void* fb)
     {
         //fb是外部帧缓存,非NULL可以使用
-        int need = sizeof(void*) * (height * 2 + 1024) * width * height * 8;
+        int need = sizeof(void*) * (height * 2 + 1024) + width * height * 8;
         char *ptr = new char[need + 64];
-        // char *ptr = (char*)malloc(need + 64);
         char *framebuf, *zbuf;
         int j;
         assert(ptr);
@@ -182,6 +218,7 @@ class Device_t{
     {
         if(this->framebuffer)
             delete [] this->framebuffer;
+            // free(this->framebuffer);
         this->framebuffer = NULL;
         this->zbuffer = NULL;
         this->texture = NULL;
@@ -326,6 +363,7 @@ class Device_t{
                         float v = scan.v.v * w;
                         unsigned int cc = TextureRead(u, v);
                         framebuffer[x] = cc;
+                        // std::cout << cc << std::endl;
                     }
                 }
             }
@@ -405,12 +443,177 @@ class Device_t{
         }
     }
 
+    void DrawPlane(int a, int b, int c, int d) {
+        //一个平面由两个三角形构成
+        Vertex_t p1 = mesh[a], p2 = mesh[b], p3 = mesh[c], p4 = mesh[d];
+        p1.u = 0, p1.v = 0, p2.u = 0, p2.v = 1;
+        p3.u = 1, p3.v = 1, p4.u = 1, p4.v = 0;
+        DrawTriangle(p1, p2, p3);
+        DrawTriangle(p3, p4, p1);
+    }
+
+    void DrawBox(float theta) {
+        //设置坐标系
+        Matrix_t m;
+        m.Rotate(-1, -0.5, 1, theta);
+        this->transform.world = m;
+        MVPTrans(this->transform);
+        DrawPlane( 0, 1, 2, 3);
+        DrawPlane( 7, 6, 5, 4);
+        DrawPlane( 0, 4, 5, 1);
+        DrawPlane( 1, 5, 6, 2);
+        DrawPlane( 2, 6, 7, 3);
+        DrawPlane( 3, 7, 4, 0);
+    }
+
+    void CameraInit(float x, float y, float z) {
+        Vector_t eye = { x, y, z, 1 }, at = { 0, 0, 0, 1 }, up = { 0, 0, 1, 1 };
+        this->transform.view = SetView(eye, at, up);
+        MVPTrans(this->transform);
+    }
+
+    void InitTexture() {
+        static unsigned int texture[256][256];
+        int i, j;
+        for (j = 0; j < 256; j++) {
+            for (i = 0; i < 256; i++) {
+                int x = i / 32, y = j / 32;
+                texture[j][i] = ((x + y) & 1)? 0xffffff : 0x3fbcef;
+            }
+        }
+        SetTexture(texture, 256 * 4, 256, 256);
+    }
 
 };
+
+int ScreenClose(void)
+{
+    if(screen_dc)
+    {
+        if(screen_ob)
+        {
+            SelectObject(screen_dc, screen_ob);
+            screen_ob = NULL;
+        }
+        DeleteDC(screen_dc);
+        screen_dc = NULL;
+    }
+    if(screen_hb)
+    {
+        DeleteObject(screen_hb);
+        screen_hb = NULL;
+    }
+    if(screen_handle)
+    {
+        CloseWindow(screen_handle);
+        screen_handle = NULL;
+    }
+    return 0;
+}
+
+
+
+void ScreenDispatch(void)
+{
+    MSG msg;
+    while(1)
+    {
+        if(!PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE)) break;
+        if(!GetMessage(&msg, NULL, 0, 0)) break;
+        DispatchMessage(&msg);
+    }
+}
+
+void ScreenUpdate(void)
+{
+    HDC hDC = GetDC(screen_handle);
+    BitBlt(hDC, 0, 0, screen_w, screen_h, screen_dc, 0, 0, SRCCOPY);
+    ReleaseDC(screen_handle, hDC);
+    ScreenDispatch();
+}
+
+int ScreenInit(int w, int h, const TCHAR *title)
+{
+    WNDCLASS wc = { CS_BYTEALIGNCLIENT, (WNDPROC)ScreenEvents, 0, 0, 0, 
+    NULL, NULL, NULL, NULL, _T("SCREEN3.1415926") };
+    // BITMAPINFO bi = { {sizeof(BITMAPINFOHEADER), w , -h, 1, 32, BI_RGB, w * h * 4, 0, 0, 0, 0 } };
+    BITMAPINFO bi = { { sizeof(BITMAPINFOHEADER), w, -h, 1, 32, BI_RGB,w * h * 4, 0, 0, 0, 0 } };
+    RECT rect = {0, 0, w, h};
+    int wx, wy, sx, sy;
+    LPVOID ptr;
+    HDC hDC;
+    ScreenClose();
+    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    wc.hInstance = GetModuleHandle(NULL);
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+    if(!RegisterClass(&wc)) return -1;
+    screen_handle = CreateWindow(_T("SCREEN3.1415926"), title,
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+        0, 0, 0, 0, NULL, NULL, wc.hInstance, NULL);
+    if(screen_handle == NULL) return -2;
+    screen_exit = 0;
+    hDC = GetDC(screen_handle);
+    screen_dc = CreateCompatibleDC(hDC);
+    ReleaseDC(screen_handle, hDC);
+    screen_hb = CreateDIBSection(screen_dc, &bi, DIB_RGB_COLORS, &ptr, 0, 0);
+    if(screen_hb ==  NULL) return -3;
+    screen_ob = (HBITMAP)SelectObject(screen_dc, screen_hb);
+    screen_fb = (unsigned char*)ptr;
+    screen_w = w;
+    screen_h = h;
+    screen_pitch = w * 4;
+    AdjustWindowRect(&rect, GetWindowLong(screen_handle, GWL_STYLE), 0);
+    wx = rect.right - rect.left;
+    wy = rect.bottom - rect.top;
+    sx = (GetSystemMetrics(SM_CXSCREEN) - wx) / 2;
+    sy = (GetSystemMetrics(SM_CYSCREEN) - wy) / 2;
+    if(sy < 0) sy = 0;
+    SetWindowPos(screen_handle, NULL, sx, sy, wx, wy, (SWP_NOCOPYBITS | SWP_NOZORDER | SWP_SHOWWINDOW));
+    SetForegroundWindow(screen_handle);
+    ShowWindow(screen_handle, SW_NORMAL);
+    ScreenDispatch();
+    memset(screen_keys, 0, sizeof(int)*512);
+    memset(screen_fb, 0, w * h * 4);
+    return 0;
+}
 
 
 int main(void)
 {
-
+    TCHAR *title = _T("MyShader") _T("Left/Right: rotation, Up/Down: forward/backward, Space: switch state");
+    if(ScreenInit(800, 600, title))
+        return -1;
+    Device_t device(800, 600, screen_fb);
+    int status[] = {RENDER_MODE_TEXTURE,RENDER_MODE_COLOR, RENDER_MODE_WIREFRAME};
+    int indicator = 0;
+    int kbhit = 0;
+    float alpha = 1.0f;
+    float pos = 3.5;
+    device.CameraInit(3.0f, 0.0f, 0.0f);
+    device.InitTexture();
+    device.render_status = RENDER_MODE_TEXTURE;
+    while(screen_exit == 0 && screen_keys[VK_ESCAPE] == 0)
+    {
+        // std::cout << pos << std::endl;
+        ScreenDispatch();
+        device.Clear(1);
+        device.CameraInit(pos, 0, 0);
+        if(screen_keys[VK_UP]) pos -= 0.01f;
+        if(screen_keys[VK_DOWN]) pos += 0.01f;
+        if(screen_keys[VK_LEFT]) alpha += 0.01f;
+        if(screen_keys[VK_RIGHT]) alpha -= 0.01f;
+        if(screen_keys[VK_SPACE]) {
+			if (kbhit == 0) {
+				kbhit = 1;
+				if (++indicator >= 3) indicator = 0;
+				device.render_status = status[indicator];
+			}
+		}	else {
+			kbhit = 0;
+		}
+        device.DrawBox(alpha);
+        ScreenUpdate();
+        Sleep(1);
+    }
     return 0;
 }
